@@ -1352,7 +1352,9 @@ type
     [Test]
     procedure TestWikiToHtmlGmf621;
 
-    // Autolinks extension is not supported (622-635)
+    // Autolinks extension is not supported (622-628, 630-635)
+    [Test]
+    procedure TestWikiToHtmlGmf629;
 
     // Raw HTML
     [Test]
@@ -8027,7 +8029,9 @@ var
   Sentence: String;
 begin
   Sentence := '<http://foo.bar/baz bim>';
-  Expected := '<p>&lt;http://foo.bar/baz bim&gt;</p>' + WikiLB;
+  // Expected := '<p>&lt;http://foo.bar/baz bim&gt;</p>' + WikiLB;
+  // extended url autolink
+  Expected := '<p>&lt;<a hreF="http://foo.bar/baz">http://foo.bar/baz</a> bim&gt;</p>' + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8093,7 +8097,9 @@ var
   Sentence: String;
 begin
   Sentence := '< http://foo.bar >';
-  Expected := '<p>&lt; http://foo.bar &gt;</p>' + WikiLB;
+  // Expected := '<p>&lt; http://foo.bar &gt;</p>' + WikiLB;
+  // extended url autolink
+  Expected := '<p>&lt; <a href="http://foo.bar">http://foo.bar</a> &gt;</p>' + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8134,7 +8140,9 @@ var
   Sentence: String;
 begin
   Sentence := 'http://example.com';
-  Expected := '<p>http://example.com</p>' + WikiLB;
+  // Expected := '<p>http://example.com</p>' + WikiLB;
+  // extended url autolink
+  Expected := '<p><a href="http://example.com">http://example.com</a></p>' + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8145,6 +8153,20 @@ var
 begin
   Sentence := 'foo@bar.example.com';
   Expected := '<p>foo@bar.example.com</p>' + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestWikiToHtmlGmf629;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['http://commonmark.org', '',
+    '(Visit https://encrypted.google.com/search?q=Markup+(business))']);
+  Expected := String.Join(WikiLB,
+    ['<p><a href="http://commonmark.org">http://commonmark.org</a></p>',
+    '<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business)">https://encrypted.google.com/search?q=Markup+(business)</a>)</p>']
+    ) + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 

@@ -50,6 +50,7 @@ type
       const Mark: String): Boolean;
     function CanEndEmphasis(const Text: String; const BPos, EPos: Integer;
       const Mark: String): Boolean;
+    function CountChar(const Text: String; const Ch: Char): Integer;
     function CountLine(const Text: String): Integer;
     function Encode(const Text: String; const WithHtmlEncode: Boolean): String;
     function ExistsElement(const Node: TWikiNode;
@@ -80,6 +81,8 @@ type
     function GetTableHeader(const Line: String; const Count: Integer;
       const TableAligns: TTableAligns): TWikiNode;
     function GetTextValue(const Node: TWikiNode): String;
+    function GetUrlAutoLinkEndPosition(const Text: String;
+      const Offset: Integer): Integer;
     function IndentTabToSpace(const Line: String): String;
     function IsBlockTag(const Tag: String): Boolean;
     function IsCloseEmphasis(const Opener: TDelimiter; const CanOpen: Boolean;
@@ -491,6 +494,20 @@ begin
     Exit(True);
 
   Result := False;
+end;
+
+function TMarkdownConverter.CountChar(const Text: String;
+  const Ch: Char): Integer;
+var
+  Count: Integer;
+begin
+  Count := 0;
+  for var I := 1 to Length(Text) do
+  begin
+    if Text[I] = Ch then
+      Inc(Count);
+  end;
+  Result := Count;
 end;
 
 function TMarkdownConverter.CountLine(const Text: String): Integer;
@@ -1591,6 +1608,37 @@ begin
       Result := Result + GetTextValue(Child);
     end;
   end;
+end;
+
+function TMarkdownConverter.GetUrlAutoLinkEndPosition(const Text: String;
+  const Offset: Integer): Integer;
+var
+  Regex: TRegEx;
+  Ret: TMatch;
+  Pos: Integer;
+begin
+  Regex := TRegEx.Create
+    ('https?://(([a-z0-9][a-z0-9-]*[a-z0-9]\.)+[a-z]{2,})?[^\x00-\x20<>]*',
+    [roCompiled, roIgnoreCase]);
+  Ret := Regex.Match(Text, Offset);
+  if (not Ret.Success) or (Ret.Index <> Offset) then
+    Exit(0);
+
+  Pos := Offset + Ret.Length - 1;
+  if GetAt(Text, Pos) = ')' then
+  begin
+    var
+      Open: Integer := CountChar(Ret.Groups[0].Value, '(');
+    var
+      Close: Integer := CountChar(Ret.Groups[0].Value, ')');
+    while Open < Close do
+    begin
+      Dec(Pos);
+      Dec(Close);
+    end;
+  end;
+
+  Result := Pos;
 end;
 
 function TMarkdownConverter.IndentTabToSpace(const Line: String): String;
@@ -3220,6 +3268,27 @@ begin
             Copied := Pos - 1;
             Continue;
           end;
+        end;
+      end;
+
+      // maybe extended url autolink
+      begin
+        var
+          Pos2: Integer := GetUrlAutoLinkEndPosition(Text, Pos);
+        if Pos2 > 0 then
+        begin
+          AddBeforeTextNode(Node, Copy(Text, Copied + 1, Pos - Copied - 1));
+          var
+            InnerValue: String := Copy(Text, Pos, Pos2 - Pos + 1);
+
+          ChildNode := TWikiNode.Create(TNodeType.Anchor,
+            TNetEncoding.Html.Encode(InnerValue), True);
+          ChildNode.SetAttribute('href', InnerValue);
+          Node.AddChild(ChildNode);
+
+          Pos := Pos2 + 1;
+          Copied := Pos - 1;
+          Continue;
         end;
       end;
 

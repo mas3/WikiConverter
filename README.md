@@ -71,7 +71,12 @@ GFM support status:
 - [x] Strikethrough
 - [x] Links
 - [x] Images
-- [ ] Autolinks
+- Autolinks
+  - [x] < > link
+  - [ ] extended www autolink
+  - [x] extended url autolink
+  - [ ] extended email autolink
+  - [ ] extended protocol autolink
 - [x] Raw HTML
 - [ ] Disallowed Raw HTML
 - [x] Hard line breaks
