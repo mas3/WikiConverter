@@ -1355,6 +1355,8 @@ type
     // Autolinks extension is not supported (622-628, 630-635)
     [Test]
     procedure TestWikiToHtmlGmf629;
+    [Test]
+    procedure TestWikiToHtmlGmf629_2; // additional test
 
     // Raw HTML
     [Test]
@@ -8166,6 +8168,20 @@ begin
   Expected := String.Join(WikiLB,
     ['<p><a href="http://commonmark.org">http://commonmark.org</a></p>',
     '<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business)">https://encrypted.google.com/search?q=Markup+(business)</a>)</p>']
+    ) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestWikiToHtmlGmf629_2;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['http://commonmark.org', '',
+    '(Visit https://encrypted.google.com/search?q=Markup+(business))&key=value)']);
+  Expected := String.Join(WikiLB,
+    ['<p><a href="http://commonmark.org">http://commonmark.org</a></p>',
+    '<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business))&amp;key=value">https://encrypted.google.com/search?q=Markup+(business))&amp;key=value</a>)</p>']
     ) + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;

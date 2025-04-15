@@ -1631,7 +1631,7 @@ begin
       Open: Integer := CountChar(Ret.Groups[0].Value, '(');
     var
       Close: Integer := CountChar(Ret.Groups[0].Value, ')');
-    while Open < Close do
+    while (Open < Close) and (GetAt(Text, Pos) = ')') do
     begin
       Dec(Pos);
       Dec(Close);
