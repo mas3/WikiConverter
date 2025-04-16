@@ -498,29 +498,18 @@ end;
 
 function TMarkdownConverter.CountChar(const Text: String;
   const Ch: Char): Integer;
-var
-  Count: Integer;
 begin
-  Count := 0;
+  Result := 0;
   for var I := 1 to Length(Text) do
   begin
     if Text[I] = Ch then
-      Inc(Count);
+      Inc(Result);
   end;
-  Result := Count;
 end;
 
 function TMarkdownConverter.CountLine(const Text: String): Integer;
-var
-  Count: Integer;
 begin
-  Count := 1;
-  for var I := 1 to Length(Text) do
-  begin
-    if Text[I] = #10 then
-      Inc(Count);
-  end;
-  Result := Count;
+  Result := CountChar(Text, #10) + 1;
 end;
 
 function TMarkdownConverter.Encode(const Text: String;
@@ -1628,9 +1617,9 @@ begin
   if GetAt(Text, Pos) = ')' then
   begin
     var
-      Open: Integer := CountChar(Ret.Groups[0].Value, '(');
+      Open: Integer := CountChar(Ret.Value, '(');
     var
-      Close: Integer := CountChar(Ret.Groups[0].Value, ')');
+      Close: Integer := CountChar(Ret.Value, ')');
     while (Open < Close) and (GetAt(Text, Pos) = ')') do
     begin
       Dec(Pos);
