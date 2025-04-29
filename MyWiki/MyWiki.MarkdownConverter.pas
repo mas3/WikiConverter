@@ -120,6 +120,10 @@ type
 implementation
 
 const
+  RegExBlockQuote = '^ {0,3}> ?(.*)$';
+  RegExFencedCodeBlock = '^ {0,3}(([`~])\2{2,})(?: *)([^ ]*)(.*)$';
+
+const
   BlockTags: array of String = ['address', 'article', 'aside', 'base',
     'basefont', 'blockquote', 'body', 'caption', 'center', 'col', 'colgroup',
     'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset',
@@ -1704,6 +1708,14 @@ begin
   if TRegEx.IsMatch(Line, '^ *[0-9]{1,9}\. ', [roCompiled]) then
     Exit(True);
 
+  // block quote
+  if TRegEx.IsMatch(Line, RegExBlockQuote, [roCompiled]) then
+    Exit(True);
+
+  // fenced code block
+  if TRegEx.IsMatch(Line, RegExFencedCodeBlock, [roCompiled]) then
+    Exit(True);
+
   Result := False;
 end;
 
@@ -2044,8 +2056,7 @@ begin
       end;
 
       // Fenced code blocks
-      Ret := TRegEx.Match(Line, '^ {0,3}(([`~])\2{2,})(?: *)([^ ]*)(.*)$',
-        [roCompiled]);
+      Ret := TRegEx.Match(Line, RegExFencedCodeBlock, [roCompiled]);
       if Ret.Success then
       begin
         Match := Ret.Groups[1].Value;
@@ -2105,7 +2116,7 @@ begin
       end;
 
       // blockquote
-      Ret := TRegEx.Match(Line, '^ {0,3}> ?(.*)$', [roCompiled]);
+      Ret := TRegEx.Match(Line, RegExBlockQuote, [roCompiled]);
       if Ret.Success then
       begin
         if (Node = nil) or (Node.NodeType <> TNodeType.Blockquote) then

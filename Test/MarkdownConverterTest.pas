@@ -1484,6 +1484,15 @@ type
     [Test]
     procedure TestAddIdToHeader6;
 
+    // other
+    [Test]
+    procedure TestInterruptList;
+    [Test]
+    procedure TestInterruptList2;
+    [Test]
+    procedure TestInterruptList3;
+    [Test]
+    procedure TestInterruptList4;
   end;
 
 implementation
@@ -1691,6 +1700,50 @@ begin
     '<li id="fn-ft">footnote<br />', '2nd line<br />', '<br />', '4th line.',
     '<a class="fnarrow" href="#fnref-ft">↩</a></li>', '</ol>', '</section>']
     ) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestInterruptList;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['- list', '> blockquote']);
+  Expected := String.Join(WikiLB, ['<ul>', '<li>list</li>', '</ul>',
+    '<blockquote>', '<p>blockquote</p>', '</blockquote>']) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestInterruptList2;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['1. list', '> blockquote']);
+  Expected := String.Join(WikiLB, ['<ol>', '<li>list</li>', '</ol>',
+    '<blockquote>', '<p>blockquote</p>', '</blockquote>']) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestInterruptList3;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['- list', '~~~', 'code', '~~~']);
+  Expected := String.Join(WikiLB, ['<ul>', '<li>list</li>', '</ul>',
+    '<pre><code>code', '</code></pre>']) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestInterruptList4;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['1. list', '~~~', 'code', '~~~']);
+  Expected := String.Join(WikiLB, ['<ol>', '<li>list</li>', '</ol>',
+    '<pre><code>code', '</code></pre>']) + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8033,7 +8086,9 @@ begin
   Sentence := '<http://foo.bar/baz bim>';
   // Expected := '<p>&lt;http://foo.bar/baz bim&gt;</p>' + WikiLB;
   // extended url autolink
-  Expected := '<p>&lt;<a hreF="http://foo.bar/baz">http://foo.bar/baz</a> bim&gt;</p>' + WikiLB;
+  Expected :=
+    '<p>&lt;<a hreF="http://foo.bar/baz">http://foo.bar/baz</a> bim&gt;</p>' +
+    WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8101,7 +8156,8 @@ begin
   Sentence := '< http://foo.bar >';
   // Expected := '<p>&lt; http://foo.bar &gt;</p>' + WikiLB;
   // extended url autolink
-  Expected := '<p>&lt; <a href="http://foo.bar">http://foo.bar</a> &gt;</p>' + WikiLB;
+  Expected :=
+    '<p>&lt; <a href="http://foo.bar">http://foo.bar</a> &gt;</p>' + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8144,7 +8200,8 @@ begin
   Sentence := 'http://example.com';
   // Expected := '<p>http://example.com</p>' + WikiLB;
   // extended url autolink
-  Expected := '<p><a href="http://example.com">http://example.com</a></p>' + WikiLB;
+  Expected :=
+    '<p><a href="http://example.com">http://example.com</a></p>' + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
@@ -8178,7 +8235,8 @@ var
   Sentence: String;
 begin
   Sentence := String.Join(WikiLB, ['http://commonmark.org', '',
-    '(Visit https://encrypted.google.com/search?q=Markup+(business))&key=value)']);
+    '(Visit https://encrypted.google.com/search?q=Markup+(business))&key=value)']
+    );
   Expected := String.Join(WikiLB,
     ['<p><a href="http://commonmark.org">http://commonmark.org</a></p>',
     '<p>(Visit <a href="https://encrypted.google.com/search?q=Markup+(business))&amp;key=value">https://encrypted.google.com/search?q=Markup+(business))&amp;key=value</a>)</p>']
