@@ -84,10 +84,13 @@ type
     function GetUrlAutoLinkEndPosition(const Text: String;
       const Offset: Integer): Integer;
     function IndentTabToSpace(const Line: String): String;
+    function IsAllSpace(const Line: String): Boolean;
     function IsBlockTag(const Tag: String): Boolean;
     function IsCloseEmphasis(const Opener: TDelimiter; const CanOpen: Boolean;
       const Len: Integer): Boolean;
     function IsEmailAddress(const Text: String): Boolean;
+    function IsEndOfFencedCodeBlock(const Line: String; const Mark: Char;
+      const Len: Integer): Boolean;
     function IsLink(const Text: String): Boolean;
     function IsListBreakLine(const Line: String): Boolean;
     function IsPunctuation(const Text: String; const Pos: Integer;
@@ -120,10 +123,6 @@ type
 implementation
 
 const
-  RegExBlockQuote = '^ {0,3}> ?(.*)$';
-  RegExFencedCodeBlock = '^ {0,3}(([`~])\2{2,})(?: *)([^ ]*)(.*)$';
-
-const
   BlockTags: array of String = ['address', 'article', 'aside', 'base',
     'basefont', 'blockquote', 'body', 'caption', 'center', 'col', 'colgroup',
     'dd', 'details', 'dialog', 'dir', 'div', 'dl', 'dt', 'fieldset',
@@ -132,6 +131,53 @@ const
     'li', 'link', 'main', 'menu', 'menuitem', 'nav', 'noframes', 'ol',
     'optgroup', 'option', 'p', 'param', 'section', 'source', 'summary', 'table',
     'tbody', 'td', 'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul'];
+
+var
+  RegexAtxHeading: TRegEx;
+  RegexAutoLink: TRegEx;
+  RegexBlockQuote: TRegEx;
+  RegexCheckOrderList: TRegEx;
+  RegexCheckUnOrderList: TRegEx;
+  RegexDecimalEntityReference: TRegEx;
+  RegexDeleteTableLeft: TRegEx;
+  RegexDeleteTableRight: TRegEx;
+  RegexEmailAddress: TRegEx;
+  RegexEmptyAtxHeading: TRegEx;
+  RegexEmptyBlockQuote: TRegEx;
+  RegexEmptyOrderdList: TRegEx;
+  RegexEmptyUnOrderdList: TRegEx;
+  RegexFencedCodeBlock: TRegEx;
+  RegexFootnoteDefinition: TRegEx;
+  RegexHexadecimalEntityReference: TRegEx;
+  RegexHtmlCdata: TRegEx;
+  RegexHtmlComment: TRegEx;
+  RegexHtmlDeclaration: TRegEx;
+  RegexHtmlProcessingInstruction: TRegEx;
+  RegexHtmlTag: TRegEx;
+  RegexHtmlTagType1: TRegEx;
+  RegexHtmlTagType7: TRegEx;
+  RegexLink: TRegEx;
+  RegexLinkOrFootnoteDefinition: TRegEx;
+  RegexMultiSpaceToSingleSpace: TRegEx;
+  RegexOrderdList: TRegEx;
+  RegexOrderdListContinue: TRegEx;
+  RegexOrderdListMarkOnly: TRegEx;
+  RegexOrderdListStart: TRegEx;
+  RegexPreformattedText: TRegEx;
+  RegexSetextHeading1: TRegEx;
+  RegexSetextHeading2: TRegEx;
+  RegexTable: TRegEx;
+  RegexTableCell: TRegEx;
+  RegexTableHeader: TRegEx;
+  RegexTaskListMark: TRegEx;
+  RegexThematicBreak: TRegEx;
+  RegexTrimLeft: TRegEx;
+  RegexTrimRightEachLine: TRegEx;
+  RegexTrimRightLineBreak: TRegEx;
+  RegexUnOrderdList: TRegEx;
+  RegexUnOrderdListContinue: TRegEx;
+  RegexUnOrderdListStart: TRegEx;
+  RegexWhiteSpaceOnlyLine: TRegEx;
 
   { TMarkdownConverter }
 
@@ -148,7 +194,6 @@ procedure TMarkdownConverter.AddOrderdList(const ParentNode: TWikiNode;
   const Lines: TStringList);
 var
   Node: TWikiNode;
-  Regex: String;
   Ret: TMatch;
   Line: String;
   Index: Integer;
@@ -159,13 +204,12 @@ var
   LastIndentLength: Integer;
   NumberLength: Integer;
 begin
-  Lines.Text := TRegEx.Replace(Lines.Text, '(\r?\n)+$', '', [roCompiled]);
+  Lines.Text := TrimRightLineBreak(Lines.Text);
 
   Index := 0;
-  Regex := '^ {0,3}([0-9]{1,9})[.)] ?(.*)$';
   Line := Lines[Index];
 
-  Ret := TRegEx.Match(Line, Regex, [roCompiled]);
+  Ret := RegexOrderdList.Match(Line);
   if not Ret.Success then
   begin
     raise EArgumentException.CreateFmt('Invalid orderd list. [%s]', [Line]);
@@ -207,7 +251,7 @@ begin
     end;
 
     IndentLength := GetIndentLength(Line);
-    Ret := TRegEx.Match(Line, Regex, [roCompiled]);
+    Ret := RegexOrderdList.Match(Line);
     if Ret.Success then
     begin
       NumberLength := Length(Ret.Groups[1].Value);
@@ -225,7 +269,7 @@ begin
       // list item
       Node := TWikiNode.Create(TNodeType.ListItem);
       Node.Text := ListItem;
-      if TRegEx.IsMatch(ListItem, '\n$', [roCompiled]) then
+      if ExistsLineBreakAtEndOfLine(ListItem) then
       begin
         // Reflect the last blank line when parsing
         Node.Text := Node.Text + WikiLB;
@@ -261,7 +305,7 @@ begin
   begin
     Node := TWikiNode.Create(TNodeType.ListItem);
     Node.Text := ListItem;
-    if TRegEx.IsMatch(ListItem, '\n$', [roCompiled]) then
+    if ExistsLineBreakAtEndOfLine(ListItem) then
     begin
       // Reflect the last blank line when parsing
       Node.Text := Node.Text + WikiLB;
@@ -306,7 +350,6 @@ procedure TMarkdownConverter.AddUnorderdList(const ParentNode: TWikiNode;
   const Lines: TStringList);
 var
   Node: TWikiNode;
-  Regex: String;
   Ret: TMatch;
   Line: String;
   Index: Integer;
@@ -316,13 +359,12 @@ var
   FrontBlankLineIndex: Integer;
   LastIndentLength: Integer;
 begin
-  Lines.Text := TRegEx.Replace(Lines.Text, '(\r?\n)+$', '', [roCompiled]);
+  Lines.Text := TrimRightLineBreak(Lines.Text);
 
   Index := 0;
-  Regex := '^( {0,3})[-+*] ?(.*)$';
   Line := Lines[Index];
 
-  Ret := TRegEx.Match(Line, Regex, [roCompiled]);
+  Ret := RegexUnOrderdList.Match(Line);
   if not Ret.Success then
   begin
     raise EArgumentException.CreateFmt('Invalid unorderd list. [%s]', [Line]);
@@ -363,7 +405,7 @@ begin
     end;
 
     IndentLength := GetIndentLength(Line);
-    Ret := TRegEx.Match(Line, Regex, [roCompiled]);
+    Ret := RegexUnOrderdList.Match(Line);
     if Ret.Success then
     begin
       if IndentLength >= (LastIndentLength + ListItemPositionFromMark) then
@@ -378,7 +420,7 @@ begin
       // list item
       Node := TWikiNode.Create(TNodeType.ListItem);
       Node.Text := ListItem;
-      if TRegEx.IsMatch(ListItem, '\n$', [roCompiled]) then
+      if ExistsLineBreakAtEndOfLine(ListItem) then
       begin
         // Reflect the last blank line when parsing
         Node.Text := Node.Text + WikiLB;
@@ -414,7 +456,7 @@ begin
   begin
     Node := TWikiNode.Create(TNodeType.ListItem);
     Node.Text := ListItem;
-    if TRegEx.IsMatch(ListItem, '\n$', [roCompiled]) then
+    if ExistsLineBreakAtEndOfLine(ListItem) then
     begin
       // Reflect the last blank line when parsing
       Node.Text := Node.Text + WikiLB;
@@ -531,17 +573,16 @@ var
     if not WithHtmlEncode then
       Exit(Ch);
 
-    if Ch = '<' then
-      Exit('&lt;');
-
-    if Ch = '>' then
-      Exit('&gt;');
-
-    if Ch = '"' then
-      Exit('&quot;');
-
-    if Ch = '&' then
-      Exit('&amp;');
+    case Ch of
+      '<':
+        Exit('&lt;');
+      '>':
+        Exit('&gt;');
+      '"':
+        Exit('&quot;');
+      '&':
+        Exit('&amp;');
+    end;
 
     Result := Ch;
   end;
@@ -610,8 +651,7 @@ begin
             Break;
           end;
 
-          Ret := TRegEx.Match(Reference, '^&#x([0-9A-F]{1,6});$',
-            [roCompiled, roIgnoreCase]);
+          Ret := RegexHexadecimalEntityReference.Match(Reference);
           if Ret.Success then
           begin
             Entity := NumberToChar(('$' + Ret.Groups[1].Value).ToInteger);
@@ -622,7 +662,7 @@ begin
             Break;
           end;
 
-          Ret := TRegEx.Match(Reference, '^&#([0-9]{1,7});$', [roCompiled]);
+          Ret := RegexDecimalEntityReference.Match(Reference);
           if Ret.Success then
           begin
             Entity := NumberToChar(Ret.Groups[1].Value.ToInteger);
@@ -636,9 +676,7 @@ begin
         Pos2 := Pos2 + 1;
       end;
       if Pos2 <= Size then
-      begin
         Continue;
-      end;
     end;
 
     if CharInSet(Ch, ['<', '>', '"', '&']) then
@@ -840,16 +878,11 @@ begin
 end;
 
 function TMarkdownConverter.GetIndentLength(const Line: String): Integer;
-var
-  Ret: TMatch;
 begin
   Result := 0;
 
-  Ret := TRegEx.Match(Line, '(^ *)', [roCompiled]);
-  if Ret.Success then
-  begin
-    Result := Length(Ret.Groups[1].Value);
-  end;
+  while GetAt(Line, Result + 1) = ' ' do
+    Inc(Result);
 end;
 
 function TMarkdownConverter.GetLinkDestinationAndTitle(const Text: String;
@@ -1046,7 +1079,7 @@ end;
 
 function TMarkdownConverter.GetLinkId(const Id: String): String;
 begin
-  Result := TRegEx.Replace(AnsiUpperCase(Id), '\s+', ' ');
+  Result := RegexMultiSpaceToSingleSpace.Replace(AnsiUpperCase(Id), ' ');
 end;
 
 function TMarkdownConverter.GetLinkInfo(const Text: String;
@@ -1464,22 +1497,24 @@ var
   Item: String;
 begin
   SetLength(Cells, CellCount);
-  Buff := TRegEx.Replace(Line, '^\s*\|', '', [roCompiled]);
-  Buff := TRegEx.Replace(Buff, '\|\s*$', '', [roCompiled]);
+  Buff := RegexDeleteTableLeft.Replace(Line, '');
+  Buff := RegexDeleteTableRight.Replace(Buff, '');
   Buff := Buff + '|';
 
-  Ret := TRegEx.Matches(Buff, '\s*(.+?)\s*(?!\\)\|', [roCompiled]);
+  Ret := RegexTableCell.Matches(Buff);
   I := 0;
   while (I < CellCount) and (I < Ret.Count) do
   begin
     Item := Ret.Item[I].Groups[1].Value;
-    if TRegEx.IsMatch(Item, '^:-+:$', [roCompiled]) then
-      Cells[I] := 'center'
-    else if TRegEx.IsMatch(Item, ':$', [roCompiled]) then
-      Cells[I] := 'right'
+    if Item[Length(Item)] = ':' then
+    begin
+      if Item[1] = ':' then
+        Cells[I] := 'center' // :-:
+      else
+        Cells[I] := 'right'; // -:
+    end
     else
-      Cells[I] := '';
-
+      Cells[I] := ''; // :-
     Inc(I);
   end;
 
@@ -1490,18 +1525,29 @@ function TMarkdownConverter.GetTableCellCount(const Line: String): Integer;
 var
   Buff: String;
   Count: Integer;
+  Escaped: Boolean;
 begin
-  Buff := TRegEx.Replace(Line, '^\s*\|', '', [roCompiled]);
-  Buff := TRegEx.Replace(Buff, '\|\s*$', '', [roCompiled]);
-  Buff := TRegEx.Replace(Buff, '\\\|', '', [roCompiled]);
+  Buff := RegexDeleteTableLeft.Replace(Line, '');
+  Buff := RegexDeleteTableRight.Replace(Buff, '');
 
   Count := 0;
+  Escaped := False;
   for var I := 1 to Length(Buff) do
   begin
-    if Buff[I] = '|' then
+    if Escaped then
     begin
-      Count := Count + 1;
+      Escaped := False;
+      Continue;
     end;
+
+    if Buff[I] = '\' then
+    begin
+      Escaped := True;
+      Continue;
+    end;
+
+    if Buff[I] = '|' then
+      Inc(Count);
   end;
 
   Result := Count + 1;
@@ -1509,11 +1555,6 @@ end;
 
 function TMarkdownConverter.GetTableCells(const Line: String;
   const Count: Integer): TTableCells;
-var
-  Buff: String;
-  Cells: TTableCells;
-  I: Integer;
-  Ret: TMatchCollection;
 
   function EscapePipe(const Text: String): String;
   var
@@ -1524,11 +1565,11 @@ var
     Escaped := False;
     for var I := 1 to Length(Text) do
     begin
-      Item := GetAt(Text, I);
+      Item := Text[I];
       if Item = '\' then
       begin
         Escaped := not Escaped;
-        if GetAt(Text, I + 1) = '|' then
+        if Escaped and (GetAt(Text, I + 1) = '|') then
           Continue;
       end
       else
@@ -1540,18 +1581,20 @@ var
     end;
   end;
 
+var
+  Buff: String;
+  Cells: TTableCells;
+  Ret: TMatchCollection;
 begin
   SetLength(Cells, Count);
-  Buff := TRegEx.Replace(Line, '^\s*\|', '', [roCompiled]);
-  Buff := TRegEx.Replace(Buff, '\|\s*$', '', [roCompiled]);
+  Buff := RegexDeleteTableLeft.Replace(Line, '');
+  Buff := RegexDeleteTableRight.Replace(Buff, '');
   Buff := Buff + '|';
 
-  Ret := TRegEx.Matches(Buff, '\s*(.+?)\s*(?<!\\)\|', [roCompiled]);
-  I := 0;
-  while (I < Count) and (I < Ret.Count) do
+  Ret := RegexTableCell.Matches(Buff);
+  for var I := 0 to Min(Count, Ret.Count) - 1 do
   begin
     Cells[I] := EscapePipe(Ret.Item[I].Groups[1].Value);
-    Inc(I);
   end;
 
   SetLength(Cells, Min(Count, Ret.Count));
@@ -1576,9 +1619,7 @@ begin
     Cell := TWikiNode.Create(TNodeType.TableHeaderCell);
     Cell.Text := Cells[I];
     if TableAligns[I] <> '' then
-    begin
       Cell.SetAttribute('align', TableAligns[I]);
-    end;
 
     Row.AddChild(Cell);
   end;
@@ -1606,14 +1647,10 @@ end;
 function TMarkdownConverter.GetUrlAutoLinkEndPosition(const Text: String;
   const Offset: Integer): Integer;
 var
-  Regex: TRegEx;
   Ret: TMatch;
   Pos: Integer;
 begin
-  Regex := TRegEx.Create
-    ('https?://(([a-z0-9][a-z0-9-]*[a-z0-9]\.)+[a-z]{2,})?[^\x00-\x20<>]*',
-    [roCompiled, roIgnoreCase]);
-  Ret := Regex.Match(Text, Offset);
+  Ret := RegexAutoLink.Match(Text, Offset);
   if (not Ret.Success) or (Ret.Index <> Offset) then
     Exit(0);
 
@@ -1635,23 +1672,34 @@ begin
 end;
 
 function TMarkdownConverter.IndentTabToSpace(const Line: String): String;
-var
-  Indent: String;
-  Ret: TMatch;
 begin
-  Result := Line;
+  Result := '';
 
-  if Line = '' then
-    Exit;
+  for var I := 1 to Length(Line) do
+  begin
+    case Line[I] of
+      ' ':
+        Result := Result + ' ';
+      #9:
+        Result := Result + StringOfChar(' ',
+          4 - ((Length(Result) + 1) mod 4) + 1);
+    else
+      begin
+        Result := Result + Copy(Line, I, Length(Line) - I + 1);
+        Break;
+      end;
+    end;
+  end;
+end;
 
-  Ret := TRegEx.Match(Line, '^([\t ]+)(.+)', [roCompiled]);
-  if not Ret.Success then
-    Exit;
-
-  Indent := Ret.Groups[1].Value;
-  Indent := TRegEx.Replace(Indent, '\t| \t|  \t', '    ', [roCompiled]);
-
-  Result := Indent + Ret.Groups[2].Value;
+function TMarkdownConverter.IsAllSpace(const Line: String): Boolean;
+begin
+  for var I := 1 to Length(Line) do
+  begin
+    if Line[I] <> ' ' then
+      Exit(False);
+  end;
+  Exit(True);
 end;
 
 function TMarkdownConverter.IsBlockTag(const Tag: String): Boolean;
@@ -1687,33 +1735,58 @@ end;
 
 function TMarkdownConverter.IsEmailAddress(const Text: String): Boolean;
 begin
-  Result := TRegEx.IsMatch(Text,
-    '^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$',
-    [roCompiled]);
+  Result := RegexEmailAddress.IsMatch(Text);
+end;
+
+function TMarkdownConverter.IsEndOfFencedCodeBlock(const Line: String;
+  const Mark: Char; const Len: Integer): Boolean;
+var
+  Indent: String;
+  IndentLength: Integer;
+  Fence: String;
+begin
+  if Line = '' then
+    Exit(False);
+
+  IndentLength := GetIndentLength(Line);
+  if IndentLength > 3 then
+    Exit(False);
+
+  Indent := StringOfChar(' ', IndentLength);
+  Fence := Indent + StringOfChar(Mark, Len);
+  if LeftStr(Line, Length(Fence)) <> Fence then
+    Exit(False);
+
+  for var I := Length(Fence) + 1 to Length(Line) do
+  begin
+    if Line[I] <> Mark then
+      Exit(False);
+  end;
+
+  Result := True;
 end;
 
 function TMarkdownConverter.IsLink(const Text: String): Boolean;
 begin
-  Result := TRegEx.IsMatch(Text,
-    '^[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\x00-\x20<>]*$', [roCompiled]);
+  Result := RegexLink.IsMatch(Text);
 end;
 
 function TMarkdownConverter.IsListBreakLine(const Line: String): Boolean;
 begin
   // other unorderd list
-  if TRegEx.IsMatch(Line, '^ *[-+*] ', [roCompiled]) then
+  if RegexCheckOrderList.IsMatch(Line) then
     Exit(True);
 
   // other orderd list
-  if TRegEx.IsMatch(Line, '^ *[0-9]{1,9}\. ', [roCompiled]) then
+  if RegexCheckUnOrderList.IsMatch(Line) then
     Exit(True);
 
   // block quote
-  if TRegEx.IsMatch(Line, RegExBlockQuote, [roCompiled]) then
+  if RegexBlockQuote.IsMatch(Line) then
     Exit(True);
 
   // fenced code block
-  if TRegEx.IsMatch(Line, RegExFencedCodeBlock, [roCompiled]) then
+  if RegexFencedCodeBlock.IsMatch(Line) then
     Exit(True);
 
   Result := False;
@@ -1761,8 +1834,7 @@ end;
 
 function TMarkdownConverter.IsThematicBreak(const Line: String): Boolean;
 begin
-  Result := TRegEx.IsMatch(Line, '^ {0,3}([-*_])[ \t]*\1[ \t]*\1([ \t]|\1)*$',
-    [roCompiled]);
+  Result := RegexThematicBreak.IsMatch(Line);
 end;
 
 function TMarkdownConverter.IsUnicodeWhitespaceChar(const Ch: Char): Boolean;
@@ -1788,7 +1860,7 @@ begin
 
   if Node.NodeType = TNodeType.Paragraph then
   begin
-    if TRegEx.IsMatch(Node.Text, '^[-+*]$', [roCompiled]) then
+    if (Length(Node.Text) = 1) and CharInSet(Node.Text[1], ['-', '+', '*']) then
     begin
       // only unorder list mark
       Node.Text := '';
@@ -1799,7 +1871,7 @@ begin
       Exit;
     end;
 
-    if TRegEx.IsMatch(Node.Text, '^[0-9]{1,9}\.$', [roCompiled]) then
+    if RegexOrderdListMarkOnly.IsMatch(Node.Text) then
     begin
       // only order list mark
       var
@@ -1808,9 +1880,7 @@ begin
       Node.Text := '';
       Node.NodeType := TNodeType.OrderedList;
       if Number <> 1 then
-      begin
         Node.SetAttribute('start', Number.ToString);
-      end;
       ChildNode := TWikiNode.Create(TNodeType.ListItem);
       Node.AddChild(ChildNode);
       ParentNode.AddChild(Node);
@@ -1835,8 +1905,7 @@ begin
         [Encode(Node.CodeLanguage, True)]));
     end;
 
-    if (Node.Text <> '') and not TRegEx.IsMatch(Node.Text, '\n$', [roCompiled])
-    then
+    if (Node.Text <> '') and not ExistsLineBreakAtEndOfLine(Node.Text) then
     begin
       Node.Text := Node.Text + WikiLB;
     end;
@@ -1861,8 +1930,7 @@ begin
           var
             GrandChild: TWikiNode := Child.ChildNodes[0];
           var
-            Ret: TMatch := TRegEx.Match(GrandChild.Text,
-              '^( {0,3}\[([Xx ])\] )', [roCompiled]);
+            Ret: TMatch := RegexTaskListMark.Match(GrandChild.Text);
 
           if Ret.Success then
           begin
@@ -1873,9 +1941,7 @@ begin
               // Input.SetAttribute('disabled', '');
             Input.SetAttribute('type', 'checkbox');
             if Ret.Groups[2].Value <> ' ' then
-            begin
               Input.SetAttribute('checked', '');
-            end;
             Input.Value := ' ';
             GrandChild.AddChild(Input);
             GrandChild.Text := RightStr(GrandChild.Text, Length(GrandChild.Text)
@@ -1978,7 +2044,7 @@ begin
       if (Node <> nil) and (Node.NodeType in [TNodeType.Paragraph,
         TNodeType.Text]) then
       begin
-        if TRegEx.IsMatch(Line, '^ {0,3}=+ *$', [roCompiled]) then
+        if RegexSetextHeading1.IsMatch(Line) then
         begin
           Node.NodeType := TNodeType.Heading1;
           if (ParentNode = FRoot) and GiveIdToHeader then
@@ -1991,7 +2057,7 @@ begin
           Continue;
         end;
 
-        if TRegEx.IsMatch(Line, '^ {0,3}-+ *$', [roCompiled]) then
+        if RegexSetextHeading2.IsMatch(Line) then
         begin
           Node.NodeType := TNodeType.Heading2;
 
@@ -2009,7 +2075,7 @@ begin
       // preformatted text
       if (Node = nil) or (Node.NodeType in [TNodeType.Blockquote]) then
       begin
-        Ret := TRegEx.Match(Line, '^ {4}(.*)', [roCompiled]);
+        Ret := RegexPreformattedText.Match(Line);
         if Ret.Success then
         begin
           if Node <> nil then
@@ -2027,7 +2093,7 @@ begin
           begin
             Line := IndentTabToSpace(Lines[LocalIndex]);
 
-            Ret := TRegEx.Match(Line, '^ {4}(.*)', [roCompiled]);
+            Ret := RegexPreformattedText.Match(Line);
             if Ret.Success then
             begin
               Node.Text := AddLine(Node.Text, Ret.Groups[1].Value);
@@ -2035,7 +2101,7 @@ begin
               Continue;
             end;
 
-            if TRegEx.IsMatch(Line, '^ {0,3}$', [roCompiled]) then
+            if RegexWhiteSpaceOnlyLine.IsMatch(Line) then
             begin
               // only white space line
               Node.Text := AddLine(Node.Text, '');
@@ -2046,8 +2112,7 @@ begin
             Break;
           end;
 
-          Node.Text := TRegEx.Replace(Node.Text, '(\r\n)+$', WikiLB,
-            [roCompiled]);
+          Node.Text := RegexTrimRightLineBreak.Replace(Node.Text, WikiLB);
           OutputBuffer(ParentNode, Node);
           Node := nil;
           Index := LocalIndex;
@@ -2056,12 +2121,12 @@ begin
       end;
 
       // Fenced code blocks
-      Ret := TRegEx.Match(Line, RegExFencedCodeBlock, [roCompiled]);
+      Ret := RegexFencedCodeBlock.Match(Line);
       if Ret.Success then
       begin
         Match := Ret.Groups[1].Value;
         var
-          FenceMark: String := Ret.Groups[2].Value;
+          FenceMark: Char := Ret.Groups[2].Value[1];
         var
           FenceLength: Integer := Length(Match);
         var
@@ -2073,7 +2138,7 @@ begin
         var
           AfterLanguage: String := Ret.Groups[4].Value;
 
-        if (FenceMark[1] <> '`') or (Pos('`', Language) = 0) and
+        if (FenceMark <> '`') or (Pos('`', Language) = 0) and
           (Pos('`', AfterLanguage) = 0) then
         begin
           if Node <> nil then
@@ -2090,8 +2155,7 @@ begin
           begin
             Line := IndentTabToSpace(Lines[LocalIndex]);
 
-            if TRegEx.IsMatch(Line, Format('^ {0,3}%s{%d,}$',
-              [FenceMark, FenceLength])) then
+            if IsEndOfFencedCodeBlock(Line, FenceMark, FenceLength) then
             begin
               // end of block
               Inc(LocalIndex);
@@ -2101,7 +2165,7 @@ begin
             if IndentLength > 0 then
             begin
               // remove indent
-              Line := TRegEx.Create(IndentRemoveRegEx).Replace(Line, '', 1);
+              Delete(Line, 1, Min(IndentLength, GetIndentLength(Line)));
             end;
 
             Node.Text := Node.Text + Line + WikiLB;
@@ -2116,7 +2180,7 @@ begin
       end;
 
       // blockquote
-      Ret := TRegEx.Match(Line, RegExBlockQuote, [roCompiled]);
+      Ret := RegexBlockQuote.Match(Line);
       if Ret.Success then
       begin
         if (Node = nil) or (Node.NodeType <> TNodeType.Blockquote) then
@@ -2145,7 +2209,7 @@ begin
       end;
 
       // empty unorderd list
-      Ret := TRegEx.Match(Line, '^( {0,3})([-+*]) *$', [roCompiled]);
+      Ret := RegexEmptyUnOrderdList.Match(Line);
       if Ret.Success then
       begin
         if Index <= (LineCount - 2) then
@@ -2169,7 +2233,7 @@ begin
       end;
 
       // unorderd list
-      Ret := TRegEx.Match(Line, '^ {0,3}([-+*])( +).*$', [roCompiled]);
+      Ret := RegexUnOrderdListStart.Match(Line);
       if Ret.Success then
       begin
         OutputBuffer(ParentNode, Node);
@@ -2201,7 +2265,7 @@ begin
           begin
             Line := IndentTabToSpace(Lines[LocalIndex]);
 
-            if TRegEx.IsMatch(Line, '^ *$', [roCompiled]) then
+            if IsAllSpace(Line) then
             begin
               ListBlockLines.Add(Line);
               Inc(LocalIndex);
@@ -2216,21 +2280,17 @@ begin
               Continue;
             end;
 
-            Ret := TRegEx.Match(Line, '^ {0,3}([-+*])(.*)$');
+            Ret := RegexUnOrderdListContinue.Match(Line);
             if not Ret.Success then
             begin
               if (ItemBeginPos > GetIndentLength(Line)) then
               begin
                 if Lines[LocalIndex - 1] = '' then
-                begin
                   Break;
-                end;
               end;
 
               if IsListBreakLine(Line) then
-              begin
                 Break;
-              end;
 
               // paragraph continuation line
               ListBlockLines.Add(Line);
@@ -2239,14 +2299,10 @@ begin
             end;
 
             if Ret.Groups[1].Value <> ListMark then
-            begin
               Break;
-            end;
 
             if IsThematicBreak(Line) then
-            begin
               Break;
-            end;
 
             var
               ListItem: String := Ret.Groups[2].Value;
@@ -2266,7 +2322,7 @@ begin
           if Lines[Index] = '' then
           begin
             // If the line ends with a blank line, restart processing from the last blank line
-            Index := Index - 1;
+            Dec(Index);
           end;
           AddUnorderdList(Node, ListBlockLines);
           OutputBuffer(ParentNode, Node);
@@ -2279,7 +2335,7 @@ begin
       end;
 
       // empty orderd list
-      Ret := TRegEx.Match(Line, '^( {0,3})([0-9]{1,9})([.)]) *$', [roCompiled]);
+      Ret := RegexEmptyOrderdList.Match(Line);
       if Ret.Success then
       begin
         if Index <= (LineCount - 2) then
@@ -2305,8 +2361,7 @@ begin
       end;
 
       // orderd list
-      Ret := TRegEx.Match(Line, '^ {0,3}([0-9]{1,9})([.)])( +).*$',
-        [roCompiled]);
+      Ret := RegexOrderdListStart.Match(Line);
       if Ret.Success then
       begin
         var
@@ -2352,7 +2407,7 @@ begin
             begin
               Line := IndentTabToSpace(Lines[LocalIndex]);
 
-              if TRegEx.IsMatch(Line, '^ *$', [roCompiled]) then
+              if IsAllSpace(Line) then
               begin
                 ListBlockLines.Add(Line);
                 Inc(LocalIndex);
@@ -2367,21 +2422,17 @@ begin
                 Continue;
               end;
 
-              Ret := TRegEx.Match(Line, '^ {0,3}[0-9]{1,9}([.)])(.*)$');
+              Ret := RegexOrderdListContinue.Match(Line);
               if not Ret.Success then
               begin
                 if (ItemBeginPos > GetIndentLength(Line)) then
                 begin
                   if Lines[LocalIndex - 1] = '' then
-                  begin
                     Break;
-                  end;
                 end;
 
                 if IsListBreakLine(Line) then
-                begin
                   Break;
-                end;
 
                 // paragraph continuation line
                 ListBlockLines.Add(Line);
@@ -2390,9 +2441,7 @@ begin
               end;
 
               if Ret.Groups[1].Value <> ListMark then
-              begin
                 Break;
-              end;
 
               var
                 ListItem: String := Ret.Groups[2].Value;
@@ -2404,9 +2453,7 @@ begin
               end;
 
               if IsThematicBreak(Line) then
-              begin
                 Break;
-              end;
 
               // list item
               ListBlockLines.Add(Line);
@@ -2417,7 +2464,7 @@ begin
             if Lines[Index] = '' then
             begin
               // If the line ends with a blank line, restart processing from the last blank line
-              Index := Index - 1;
+              Dec(Index);
             end;
             AddOrderdList(Node, ListBlockLines);
             OutputBuffer(ParentNode, Node);
@@ -2430,9 +2477,8 @@ begin
         end;
       end;
 
-      // headers empty
-      Ret := TRegEx.Match(Line, '^ {0,3}(#{1,6})(?:[ \t]+#*)?(?:[ \t]*)$',
-        [roCompiled]);
+      // ATX headings empty
+      Ret := RegexEmptyAtxHeading.Match(Line);
       if Ret.Success then
       begin
         OutputBuffer(ParentNode, Node);
@@ -2450,9 +2496,8 @@ begin
         Continue;
       end;
 
-      // headers
-      Ret := TRegEx.Match(Line,
-        '^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#*)?(?:[ \t]*)$', [roCompiled]);
+      // ATX headings
+      Ret := RegexAtxHeading.Match(Line);
       if Ret.Success then
       begin
         OutputBuffer(ParentNode, Node);
@@ -2473,7 +2518,7 @@ begin
       end;
 
       // comment (html type 2)
-      if TRegEx.IsMatch(Line, '^ {0,3}<!--', [roCompiled]) then
+      if RegexHtmlComment.IsMatch(Line) then
       begin
         OutputBuffer(ParentNode, Node);
         ProcessUntilEndMark(Index, Lines, ParentNode, '-->');
@@ -2483,7 +2528,7 @@ begin
       end;
 
       // processing instruction (html type 3)
-      if TRegEx.IsMatch(Line, '^ {0,3}<\?', [roCompiled]) then
+      if RegexHtmlProcessingInstruction.IsMatch(Line) then
       begin
         OutputBuffer(ParentNode, Node);
         ProcessUntilEndMark(Index, Lines, ParentNode, '\?>');
@@ -2493,7 +2538,7 @@ begin
       end;
 
       // declaration (html type 4)
-      if TRegEx.IsMatch(Line, '^ {0,3}<![A-Z]', [roCompiled]) then
+      if RegexHtmlDeclaration.IsMatch(Line) then
       begin
         OutputBuffer(ParentNode, Node);
         ProcessUntilEndMark(Index, Lines, ParentNode, '>');
@@ -2503,7 +2548,7 @@ begin
       end;
 
       // CDATA (html type 5)
-      if TRegEx.IsMatch(Line, '^ {0,3}<!\[CDATA\[', [roCompiled]) then
+      if RegexHtmlCdata.IsMatch(Line) then
       begin
         OutputBuffer(ParentNode, Node);
         ProcessUntilEndMark(Index, Lines, ParentNode, '\]\]>');
@@ -2513,14 +2558,14 @@ begin
       end;
 
       // html
-      Ret := TRegEx.Match(Line, '^ {0,3}</?([a-zA-Z]+)([ />]|$)', [roCompiled]);
+      Ret := RegexHtmlTag.Match(Line);
       if Ret.Success then
       begin
         var
           TagName: String := LowerCase(Ret.Groups[1].Value);
 
           // type 1 tag
-        if TRegEx.IsMatch(TagName, '^(script|style|pre)$', [roCompiled]) then
+        if RegexHtmlTagType1.IsMatch(TagName) then
         begin
           OutputBuffer(ParentNode, Node);
           ProcessUntilEndMark(Index, Lines, ParentNode, '</' + TagName + '>');
@@ -2542,15 +2587,13 @@ begin
           if (Node <> nil) and (Node.NodeType = TNodeType.Table) then
           begin
             if TableBody = nil then
-            begin
               raise ERangeError.CreateFmt('Invalid table. [%s]', [Line]);
-            end;
             AddTableRow(Line, TableCellCount, TableAligns, TableBody);
             Inc(Index);
             Continue;
           end;
 
-          Ret := TRegEx.Match(Line, '^.*?<.*?>(.*)', [roCompiled]);
+          Ret := RegexHtmlTagType7.Match(Line);
           if Ret.Success then
           begin
             var
@@ -2597,9 +2640,7 @@ begin
         end;
 
         if LocalIndex = LineCount then
-        begin
           Node.Text := Node.Text + WikiLB;
-        end;
 
         OutputBuffer(ParentNode, Node);
         Node := nil;
@@ -2620,15 +2661,14 @@ begin
       end;
 
       // table
-      if TRegEx.IsMatch(Line, '^ {0,3}.+\|.+', [roCompiled]) then
+      if RegexTable.IsMatch(Line) then
       begin
         if Index < (LineCount - 1) then
         begin
           var
             Header: String := Lines[Index + 1];
 
-          if TRegEx.IsMatch(Header, '^ {0,3}\|?(\s*:?-+:?\s*|)+', [roCompiled])
-          then
+          if RegexTableHeader.IsMatch(Header) then
           begin
             TableCellCount := GetTableCellCount(Header);
 
@@ -2648,12 +2688,12 @@ begin
       end;
 
       // link definition or footnote definition
-      if TRegEx.IsMatch(Line, '^ {0,3}\[', [roCompiled]) then
+      if RegexLinkOrFootnoteDefinition.IsMatch(Line) then
       begin
         // cannot interrupt a paragraph
         if (Node = nil) or (Node.NodeType <> TNodeType.Paragraph) then
         begin
-          if TRegEx.IsMatch(Line, '^ {0,3}\[\^[^\s]*\]', [roCompiled]) then
+          if RegexFootnoteDefinition.IsMatch(Line) then
           begin
             // footnote definistion
             var
@@ -2696,7 +2736,7 @@ begin
         end;
       end;
 
-      if TRegEx.IsMatch(Line, '^\s*$', [roCompiled]) then
+      if IsAllSpace(Line) then
       begin
         // Lines containing only white space characters are considered blank lines
         OutputBuffer(ParentNode, Node);
@@ -2718,7 +2758,7 @@ begin
       else
       begin
         if (Node.NodeType = TNodeType.Blockquote) and
-          TRegEx.IsMatch(Lines[Index - 1], '^>[ \t]*$', [roCompiled]) then
+          RegexEmptyBlockQuote.IsMatch(Lines[Index - 1]) then
         begin
           // Terminate block quote if the previous line is only '>'
           OutputBuffer(ParentNode, Node);
@@ -2852,9 +2892,7 @@ begin
     end;
 
     if Ch = ']' then
-    begin
       Break;
-    end;
 
     Id := Id + Ch;
     Inc(CPos);
@@ -2935,10 +2973,10 @@ begin
   end;
 
   // Remove leading whitespace
-  Node.Text := TRegEx.Replace(Node.Text, '^ +', '', [roCompiled, roMultiLine]);
+  Node.Text := RegexTrimLeft.Replace(Node.Text, '');
 
   // Remove blank spaces at the end of paragraphs
-  Node.Text := TRegEx.Replace(Node.Text, ' +$', '', [roCompiled]);
+  Node.Text := TrimRight(Node.Text);
 
   if Node.Text <> '' then
   begin
@@ -3128,9 +3166,11 @@ begin
             Code := Copy(Code, 2, Length(Code) - 2);
           end;
           // Line ending to space
-          Code := TRegEx.Replace(Code, '^\r\n', '', [roCompiled]);
-          Code := TRegEx.Replace(Code, '\r\n$', '', [roCompiled]);
-          Code := TRegEx.Replace(Code, '\r\n', ' ', [roCompiled]);
+          if LeftStr(Code, 2) = #13#10 then
+            Code := RightStr(Code, Length(Code) - 2);
+          if RightStr(Code, 2) = #13#10 then
+            Code := LeftStr(Code, Length(Code) - 2);
+          Code := ReplaceStr(Code, #13#10, ' ');
 
           ChildNode := TWikiNode.Create(TNodeType.Code,
             TNetEncoding.Html.Encode(Code), True);
@@ -3272,6 +3312,7 @@ begin
       end;
 
       // maybe extended url autolink
+      if CharInSet(Item, ['H', 'h']) then
       begin
         var
           Pos2: Integer := GetUrlAutoLinkEndPosition(Text, Pos);
@@ -3299,8 +3340,7 @@ begin
   end;
 
   // Remove trailing whitespace without Hard line breaks mark
-  Node.Text := TRegEx.Replace(Node.Text, '[ \x09]+$', '',
-    [roCompiled, roMultiLine]);
+  Node.Text := RegexTrimRightEachLine.Replace(Node.Text, '');
 
   if (Node.Text = '') and (Node.ChildNodes = nil) and
     (Node.NodeType = TNodeType.Paragraph) then
@@ -3360,15 +3400,11 @@ begin
     end;
 
     if (Item = '[') and not Escaped then
-    begin
       // cannot contain brackets
       Break;
-    end;
 
     if Item = #10 then
-    begin
       Inc(LineNumber);
-    end;
 
     if Item = '\' then
       Escaped := not Escaped
@@ -3396,9 +3432,7 @@ begin
     Inc(Pos);
     Item := GetAt(Text, Pos);
     if Item = #10 then
-    begin
       Inc(LineNumber);
-    end;
   until not IsWhitespaceChar(Item);
 
   // destination
@@ -3466,9 +3500,7 @@ begin
     Inc(Pos);
     Item := GetAt(Text, Pos);
     if Item = #10 then
-    begin
       Inc(LineNumber);
-    end;
   until not IsWhitespaceChar(Item);
 
   var
@@ -3483,9 +3515,7 @@ begin
       ExistsTitle: Boolean := False;
 
     if CharInSet(Mark, ['"', '''', '(']) then
-    begin
       ExistsTitle := True;
-    end;
 
     var
       BreakLineAfterDest: Boolean := GetAt(Text, Pos - 1) = #10;
@@ -3516,9 +3546,7 @@ begin
           Break;
 
         if Item = #10 then
-        begin
           Inc(LineNumber);
-        end;
 
         if Item = '\' then
           Escaped := not Escaped
@@ -3543,9 +3571,7 @@ begin
           Inc(Pos);
           Item := GetAt(Text, Pos);
           if Item = #10 then
-          begin
             Inc(LineNumber);
-          end;
         until not IsWhitespaceChar(Item);
 
         // text after title
@@ -3595,9 +3621,7 @@ begin
     Node.Text := AddLine(Node.Text, Line);
     Inc(LocalIndex);
     if TRegEx.IsMatch(Line, Condition, [roIgnoreCase]) then
-    begin
       Break;
-    end;
   end;
 
   Index := LocalIndex - 1;
@@ -3849,10 +3873,8 @@ begin
                   // both are not (***)+
                   MatchLength := 2 - Max(Target.Length mod 2, CalcLen mod 2)
                 else
-                begin
                   // one is (***)+
                   MatchLength := Max(Target.Length mod 3, CalcLen mod 3);
-                end;
 
                 Target.Length := Target.Length - MatchLength;
                 Dec(CalcLen, MatchLength);
@@ -3914,5 +3936,68 @@ begin
 
   Result := Closer;
 end;
+
+initialization
+
+RegexAtxHeading := TRegEx.Create
+  ('^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#*)?(?:[ \t]*)$', [roCompiled]);
+RegexAutoLink := TRegEx.Create
+  ('https?://(([a-z0-9][a-z0-9-]*[a-z0-9]\.)+[a-z]{2,})?[^\x00-\x20<>]*',
+  [roCompiled, roIgnoreCase]);
+RegexBlockQuote := TRegEx.Create('^ {0,3}> ?(.*)$', [roCompiled]);
+RegexCheckOrderList := TRegEx.Create('^ *[-+*] ', [roCompiled]);
+RegexCheckUnOrderList := TRegEx.Create('^ *[0-9]{1,9}\. ', [roCompiled]);
+RegexDecimalEntityReference := TRegEx.Create('^&#([0-9]{1,7});$', [roCompiled]);
+RegexDeleteTableLeft := TRegEx.Create('^\s*\|', [roCompiled]);
+RegexDeleteTableRight := TRegEx.Create('\|\s*$', [roCompiled]);
+RegexFencedCodeBlock := TRegEx.Create('^ {0,3}(([`~])\2{2,})(?: *)([^ ]*)(.*)$',
+  [roCompiled]);
+RegexFootnoteDefinition := TRegEx.Create('^ {0,3}\[\^[^\s]*\]', [roCompiled]);
+RegexEmailAddress := TRegEx.Create
+  ('^[a-zA-Z0-9.!#$%&''*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$',
+  [roCompiled]);
+RegexEmptyAtxHeading := TRegEx.Create('^ {0,3}(#{1,6})(?:[ \t]+#*)?(?:[ \t]*)$',
+  [roCompiled]);
+RegexEmptyBlockQuote := TRegEx.Create('^>[ \t]*$', [roCompiled]);
+RegexEmptyOrderdList := TRegEx.Create('^( {0,3})([0-9]{1,9})([.)]) *$',
+  [roCompiled]);
+RegexEmptyUnOrderdList := TRegEx.Create('^( {0,3})([-+*]) *$', [roCompiled]);
+RegexHexadecimalEntityReference := TRegEx.Create('^&#x([0-9A-F]{1,6});$',
+  [roCompiled, roIgnoreCase]);
+RegexHtmlCdata := TRegEx.Create('^ {0,3}<!\[CDATA\[', [roCompiled]);
+RegexHtmlComment := TRegEx.Create('^ {0,3}<!--', [roCompiled]);
+RegexHtmlDeclaration := TRegEx.Create('^ {0,3}<![A-Z]', [roCompiled]);
+RegexHtmlProcessingInstruction := TRegEx.Create('^ {0,3}<\?', [roCompiled]);
+RegexHtmlTag := TRegEx.Create('^ {0,3}</?([a-zA-Z]+)([ />]|$)', [roCompiled]);
+RegexHtmlTagType1 := TRegEx.Create('^(script|style|pre)$',
+  [roCompiled, roIgnoreCase]);
+RegexHtmlTagType7 := TRegEx.Create('^.*?<.*?>(.*)', [roCompiled, roIgnoreCase]);
+RegexLink := TRegEx.Create('^[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\x00-\x20<>]*$',
+  [roCompiled]);
+RegexLinkOrFootnoteDefinition := TRegEx.Create('^ {0,3}\[', [roCompiled]);
+RegexMultiSpaceToSingleSpace := TRegEx.Create('\s+', [roCompiled]);
+RegexOrderdList := TRegEx.Create('^ {0,3}([0-9]{1,9})[.)] ?(.*)$',
+  [roCompiled]);
+RegexOrderdListContinue := TRegEx.Create('^ {0,3}[0-9]{1,9}([.)])(.*)$',
+  [roCompiled]);
+RegexOrderdListMarkOnly := TRegEx.Create('^[0-9]{1,9}\.$', [roCompiled]);
+RegexOrderdListStart := TRegEx.Create('^ {0,3}([0-9]{1,9})([.)])( +).*$',
+  [roCompiled]);
+RegexPreformattedText := TRegEx.Create('^ {4}(.*)', [roCompiled]);
+RegexSetextHeading1 := TRegEx.Create('^ {0,3}=+ *$', [roCompiled]);
+RegexSetextHeading2 := TRegEx.Create('^ {0,3}-+ *$', [roCompiled]);
+RegexTable := TRegEx.Create('^ {0,3}.+\|.+', [roCompiled]);
+RegexTableCell := TRegEx.Create('\s*(.+?)\s*(?<!\\)\|', [roCompiled]);
+RegexTableHeader := TRegEx.Create('^ {0,3}\|?(\s*:?-+:?\s*|)+', [roCompiled]);
+RegexTaskListMark := TRegEx.Create('^( {0,3}\[([Xx ])\] )', [roCompiled]);
+RegexThematicBreak := TRegEx.Create
+  ('^ {0,3}([-*_])[ \t]*\1[ \t]*\1([ \t]|\1)*$', [roCompiled]);
+RegexTrimLeft := TRegEx.Create('^ +', [roCompiled, roMultiLine]);
+RegexTrimRightEachLine := TRegEx.Create('[ \x09]+$', [roCompiled, roMultiLine]);
+RegexTrimRightLineBreak := TRegEx.Create('[\r\n]+$', [roCompiled]);
+RegexUnOrderdList := TRegEx.Create('^( {0,3})[-+*] ?(.*)$', [roCompiled]);
+RegexUnOrderdListContinue := TRegEx.Create('^ {0,3}([-+*])(.*)$', [roCompiled]);
+RegexUnOrderdListStart := TRegEx.Create('^ {0,3}([-+*])( +).*$', [roCompiled]);
+RegexWhiteSpaceOnlyLine := TRegEx.Create('^ {0,3}$', [roCompiled]);
 
 end.

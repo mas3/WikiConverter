@@ -3,7 +3,7 @@
 interface
 
 uses
-  Classes, System.SysUtils, System.Generics.Collections,
+  Classes, System.SysUtils, System.Generics.Collections, System.StrUtils,
   MyWiki.WikiNode, MyWiki.WikiPlugin, MyWiki.Footnote, MyWiki.Header;
 
 const
@@ -47,6 +47,7 @@ type
     procedure AddHeader(Header: THeaderItem);
     procedure AddIdToHeader(const Node: TWikiNode; const Index: Integer);
     function AddLine(const Prev, Line: String): String;
+    function ExistsLineBreakAtEndOfLine(const Line: String): Boolean;
     function GetAt(const Text: String; const Pos: Integer): Char;
     function GetHeaderLevel(const NodeType: TNodeType): Integer;
     function GetHtml(const WikiNode: TWikiNode): String;
@@ -57,6 +58,7 @@ type
     procedure ParseHeader(const WikiText: String); virtual; abstract;
     // for SetHeader
     procedure ProcessInline(const Node: TWikiNode); virtual;
+    function TrimRightLineBreak(const Line: String): String;
   public
     constructor Create; virtual;
     destructor Destroy; override;
@@ -222,6 +224,11 @@ begin
   FreeAndNil(FHeader);
 
   inherited;
+end;
+
+function TWikiConverter.ExistsLineBreakAtEndOfLine(const Line: String): Boolean;
+begin
+  Result := (Line <> '') and CharInSet(Line[Length(Line)], [#10, #13]);
 end;
 
 /// <summary>
@@ -644,6 +651,26 @@ end;
 procedure TWikiConverter.SetPlugins(const Plugins: TWikiPlugins);
 begin
   FWikiPlugins := Plugins;
+end;
+
+/// <summary>
+/// Trim right line breaks.
+/// </summary>
+/// <param name="Line">Text</param>
+/// <returns>Trimmed string</returns>
+function TWikiConverter.TrimRightLineBreak(const Line: String): String;
+var
+  EPos: Integer;
+begin
+  EPos := Length(Line);
+  while EPos > 0 do
+  begin
+    if not CharInSet(Line[EPos], [#10, #13]) then
+      Break;
+    Dec(EPos);
+  end;
+
+  Result := LeftStr(Line, EPos);
 end;
 
 /// <summary>
