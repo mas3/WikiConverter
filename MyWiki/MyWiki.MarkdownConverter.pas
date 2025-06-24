@@ -3993,7 +3993,7 @@ RegexTaskListMark := TRegEx.Create('^( {0,3}\[([Xx ])\] )', [roCompiled]);
 RegexThematicBreak := TRegEx.Create
   ('^ {0,3}([-*_])[ \t]*\1[ \t]*\1([ \t]|\1)*$', [roCompiled]);
 RegexTrimLeft := TRegEx.Create('^ +', [roCompiled, roMultiLine]);
-RegexTrimRightEachLine := TRegEx.Create('[ \x09]+$', [roCompiled, roMultiLine]);
+RegexTrimRightEachLine := TRegEx.Create('[ \t]+$', [roCompiled, roMultiLine]);
 RegexTrimRightLineBreak := TRegEx.Create('[\r\n]+$', [roCompiled]);
 RegexUnOrderdList := TRegEx.Create('^( {0,3})[-+*] ?(.*)$', [roCompiled]);
 RegexUnOrderdListContinue := TRegEx.Create('^ {0,3}([-+*])(.*)$', [roCompiled]);

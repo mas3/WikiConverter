@@ -90,15 +90,17 @@ type
 
 implementation
 
-const
-  RegexBlockPlugin = '^#([a-zA-Z0-9_]+)(({{.*)|(\((.*)\).*))?$';
-  RegexBlockPluginMultiLineBegin = '{{\s*$';
-  RegexCellStyle =
-    '^(LEFT|CENTER|RIGHT|COLOR\(#?[A-Za-z0-9]+\)|BGCOLOR\(#?[A-Za-z0-9]+\)|SIZE\([0-9]+\)|BOLD):(.*)$';
-  RegexImageFile = '(\.gif|\.jpg|\.jpeg|\.png)$';
-  RegexTable = '^\|.+\|[cCfFhH]?$';
-  RegexTextAlign = '^(LEFT|CENTER|RIGHT):(.*)$';
-  RegexUri = 'https?://[\w!?/+\-_~=;.,*&@#$%()'']+';
+var
+  RegexBlockPlugin: TRegEx;
+  RegexBlockPluginMultiLineBegin: TRegEx;
+  RegexCellStyle: TRegEx;
+  RegexDecimalEntityReference: TRegEx;
+  RegexHexadecimalEntityReference: TRegEx;
+  RegexImageFile: TRegEx;
+  RegexTable: TRegEx;
+  RegexTextAlign: TRegEx;
+  RegexTrimRightEachLine: TRegEx;
+  RegexUri: TRegEx;
 
   { TPukiwikiConverter }
 
@@ -520,7 +522,7 @@ begin
       end;
 
       // table
-      if TRegEx.IsMatch(Line, RegexTable, [roCompiled]) then
+      if RegexTable.IsMatch(Line) then
       begin
         var
           RowCount: Integer := Line.CountChar('|');
@@ -542,7 +544,7 @@ begin
             if RowCount <> Line.CountChar('|') then
               Break;
 
-            if not TRegEx.IsMatch(Line, RegexTable, [roCompiled]) then
+            if not RegexTable.IsMatch(Line) then
               Break;
 
             TableLines.Add(Line);
@@ -557,7 +559,7 @@ begin
       end;
 
       // text align
-      Ret := TRegEx.Match(Line, RegexTextAlign, [roCompiled]);
+      Ret := RegexTextAlign.Match(Line);
       if Ret.Success then
       begin
         var
@@ -580,7 +582,7 @@ begin
       end;
 
       // block plugin
-      Ret := TRegEx.Match(Line, RegexBlockPlugin, [roCompiled]);
+      Ret := RegexBlockPlugin.Match(Line);
       if (FWikiPlugins <> nil) and Ret.Success then
       begin
         var
@@ -602,7 +604,7 @@ begin
 
           if not ValidFormat then
           begin
-            Ret := TRegEx.Match(Line, RegexBlockPluginMultiLineBegin);
+            Ret := RegexBlockPluginMultiLineBegin.Match(Line);
             if Ret.Success then
             begin
               var
@@ -692,7 +694,7 @@ var
 begin
   Str := RightStr(Text, Length(Text) - Offset + 1);
 
-  Ret := TRegEx.Match(Str, '^' + RegexUri, [roCompiled, roIgnoreCase]);
+  Ret := RegexUri.Match(Str);
   if not Ret.Success then
     Exit(0);
 
@@ -704,7 +706,7 @@ begin
     Node: TWikiNode := TWikiNode.Create(TNodeType.Anchor);
   Node.SetAttribute('href', Uri);
 
-  if TRegEx.IsMatch(Uri, RegexImageFile, [roCompiled, roIgnoreCase]) then
+  if RegexImageFile.IsMatch(Uri) then
   begin
     var
       Image: TWikiNode := TWikiNode.Create(TNodeType.Image);
@@ -1244,7 +1246,7 @@ begin
     Exit(EPos);
   end;
 
-  Ret := TRegEx.Match(Reference, '^&#x([0-9a-f]{1,6});$', [roCompiled]);
+  Ret := RegexHexadecimalEntityReference.Match(Reference);
   if Ret.Success then
   begin
     var
@@ -1254,7 +1256,7 @@ begin
     Exit(EPos);
   end;
 
-  Ret := TRegEx.Match(Reference, '^&#([0-9]{1,7});$', [roCompiled]);
+  Ret := RegexDecimalEntityReference.Match(Reference);
   if Ret.Success then
   begin
     var
@@ -1409,9 +1411,7 @@ begin
         Code: string := Node.Text;
 
       if RightStr(Code, 2) = WikiLB then
-      begin
         SetLength(Code, Length(Code) - 2);
-      end;
 
       Node.AddChild(TWikiNode.Create(TNodeType.Text, Encode(Code), True));
       Node.Text := '';
@@ -1540,7 +1540,7 @@ begin
   end;
 
   Text := Copy(Text, Copied + 1, CPos - Copied);
-  Text := TRegEx.Replace(Text, '[\t ]+$', '', [roCompiled, roMultiLine]);
+  Text := RegexTrimRightEachLine.Replace(Text, '');
   AddBeforeTextNode(Node, Text);
   Node.Text := '';
   Node.Processed := True;
@@ -1814,8 +1814,9 @@ begin
     if (FPageList = nil) or (not FPageList.ContainsKey(Name)) then
     begin
       // check [[alias>uri]]
-      if TRegEx.IsMatch(Name, '^' + RegexUri + '$', [roCompiled, roIgnoreCase])
-      then
+      var
+        Ret: TMatch := RegexUri.Match(Name);
+      if (Ret.Success) and (Length(Name) = Ret.Length) then
       begin
         AddBeforeTextNode(CurrentNode, Copy(Text, Copied + 1,
           Offset - Copied - 1));
@@ -1915,7 +1916,7 @@ begin
 
   while True do
   begin
-    Ret := TRegEx.Match(FText, RegexCellStyle, [roCompiled]);
+    Ret := RegexCellStyle.Match(FText);
     if not Ret.Success then
       Break;
 
@@ -1969,5 +1970,24 @@ procedure TTableCellDecoration.SetCellTextToOverride(const Text: String);
 begin
   ReflectStyle(Text);
 end;
+
+initialization
+
+RegexBlockPlugin := TRegEx.Create('^#([a-zA-Z0-9_]+)(({{.*)|(\((.*)\).*))?$',
+  [roCompiled]);
+RegexBlockPluginMultiLineBegin := TRegEx.Create('{{\s*$', [roCompiled]);
+RegexCellStyle := TRegEx.Create
+  ('^(LEFT|CENTER|RIGHT|COLOR\(#?[A-Za-z0-9]+\)|BGCOLOR\(#?[A-Za-z0-9]+\)|SIZE\([0-9]+\)|BOLD):(.*)$',
+  [roCompiled]);
+RegexDecimalEntityReference := TRegEx.Create('^&#([0-9]{1,7});$', [roCompiled]);
+RegexHexadecimalEntityReference := TRegEx.Create('^&#x([0-9a-f]{1,6});$',
+  [roCompiled]);
+RegexImageFile := TRegEx.Create('(\.gif|\.jpg|\.jpeg|\.png)$',
+  [roCompiled, roIgnoreCase]);
+RegexTable := TRegEx.Create('^\|.+\|[cCfFhH]?$', [roCompiled]);
+RegexTextAlign := TRegEx.Create('^(LEFT|CENTER|RIGHT):(.*)$', [roCompiled]);
+RegexTrimRightEachLine := TRegEx.Create('[ \t]+$', [roCompiled, roMultiLine]);
+RegexUri := TRegEx.Create('^https?://[\w!?/+\-_~=;.,*&@#$%()'']+',
+  [roCompiled, roIgnoreCase]);
 
 end.
