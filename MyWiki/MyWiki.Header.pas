@@ -3,7 +3,8 @@
 interface
 
 uses
-  System.SysUtils, System.Generics.Collections, System.RegularExpressions;
+  System.SysUtils, System.Generics.Collections, System.RegularExpressions,
+  System.StrUtils;
 
 type
   THeaderItem = class(TObject)
@@ -35,6 +36,9 @@ type
 
 implementation
 
+var
+  RegexDeleteUnusableCharacters: TRegEx;
+
 { THeader }
 
 /// <summary>
@@ -50,9 +54,8 @@ var
   Id: String;
   BranchNumber: Integer;
 begin
-  Id := TRegEx.Replace(HeaderItem.Caption, ' ', '-', [roCompiled]);
-  Id := TRegEx.Replace(Id, '[\x00-\x2c./\x3a-\x40\x5b-\x5e`\x7b-\x7e]', '',
-    [roCompiled]);
+  Id := ReplaceStr(HeaderItem.Caption, ' ', '-');
+  Id := RegexDeleteUnusableCharacters.Replace(Id, '');
   BranchNumber := 0;
   while FIds.ContainsKey(Id) do
   begin
@@ -84,5 +87,9 @@ begin
 
   inherited;
 end;
+
+initialization
+
+RegexDeleteUnusableCharacters := TRegEx.Create('[\x00-\x2c./\x3a-\x40\x5b-\x5e`\x7b-\x7e]', [roCompiled]);
 
 end.
