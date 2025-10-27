@@ -1493,6 +1493,10 @@ type
     procedure TestInterruptList3;
     [Test]
     procedure TestInterruptList4;
+    [Test]
+    procedure TestInterruptList5;
+    [Test]
+    procedure TestInterruptList6;
   end;
 
 implementation
@@ -1744,6 +1748,28 @@ begin
   Sentence := String.Join(WikiLB, ['1. list', '~~~', 'code', '~~~']);
   Expected := String.Join(WikiLB, ['<ol>', '<li>list</li>', '</ol>',
     '<pre><code>code', '</code></pre>']) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestInterruptList5;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['- list', '# ATX heading']);
+  Expected := String.Join(WikiLB, ['<ul>', '<li>list</li>', '</ul>',
+    '<h1>ATX heading</h1>']) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestInterruptList6;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['1. list', '# ATX heading']);
+  Expected := String.Join(WikiLB, ['<ol>', '<li>list</li>', '</ol>',
+    '<h1>ATX heading</h1>']) + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 

@@ -1789,6 +1789,10 @@ begin
   if RegexFencedCodeBlock.IsMatch(Line) then
     Exit(True);
 
+  // ATX heading
+  if RegexAtxHeading.IsMatch(Line) then
+    Exit(True);
+
   Result := False;
 end;
 
@@ -2267,7 +2271,7 @@ begin
 
             if IsAllSpace(Line) then
             begin
-              ListBlockLines.Add(Line);
+              ListBlockLines.Add('');
               Inc(LocalIndex);
               Continue;
             end;
@@ -2409,7 +2413,7 @@ begin
 
               if IsAllSpace(Line) then
               begin
-                ListBlockLines.Add(Line);
+                ListBlockLines.Add('');
                 Inc(LocalIndex);
                 Continue;
               end;
