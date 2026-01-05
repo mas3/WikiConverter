@@ -453,6 +453,8 @@ type
     [Test]
     procedure TestWikiToHtmlGmf198_2; // additional test
     [Test]
+    procedure TestWikiToHtmlGmf198_3; // additional test
+    [Test]
     procedure TestWikiToHtmlGmf199;
     [Test]
     procedure TestWikiToHtmlGmf200;
@@ -3063,6 +3065,17 @@ begin
     '<td>bim</td>', '</tr>', '</tbody>', '</table>', '<table>', '<thead>',
     '<tr>', '<th>foo</th>', '<th>bar</th>', '</tr>', '</thead>', '<tbody>',
     '<tr>', '<td>baz</td>', '<td>bim</td>', '</tr>', '</tbody>', '</table>']
+    ) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestWikiToHtmlGmf198_3;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['|foo|bar|', '|foo|bar|']);
+  Expected := String.Join(WikiLB, ['<p>|foo|bar|', '|foo|bar|</p>']
     ) + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;

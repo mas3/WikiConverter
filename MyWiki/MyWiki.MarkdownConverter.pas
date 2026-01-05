@@ -3992,7 +3992,7 @@ RegexSetextHeading1 := TRegEx.Create('^ {0,3}=+ *$', [roCompiled]);
 RegexSetextHeading2 := TRegEx.Create('^ {0,3}-+ *$', [roCompiled]);
 RegexTable := TRegEx.Create('^ {0,3}.+\|.+', [roCompiled]);
 RegexTableCell := TRegEx.Create('\s*(.+?)\s*(?<!\\)\|', [roCompiled]);
-RegexTableHeader := TRegEx.Create('^ {0,3}\|?(\s*:?-+:?\s*|)+', [roCompiled]);
+RegexTableHeader := TRegEx.Create('^ {0,3}\|?(\s*:?-+:?\s*\|)+', [roCompiled]);
 RegexTaskListMark := TRegEx.Create('^( {0,3}\[([Xx ])\] )', [roCompiled]);
 RegexThematicBreak := TRegEx.Create
   ('^ {0,3}([-*_])[ \t]*\1[ \t]*\1([ \t]|\1)*$', [roCompiled]);
