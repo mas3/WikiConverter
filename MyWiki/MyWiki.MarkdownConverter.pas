@@ -52,6 +52,7 @@ type
       const Mark: String): Boolean;
     function CountChar(const Text: String; const Ch: Char): Integer;
     function CountLine(const Text: String): Integer;
+    function DeleteTablePipeOnBothEnds(const Text: String): String;
     function Encode(const Text: String; const WithHtmlEncode: Boolean): String;
     function ExistsElement(const Node: TWikiNode;
       const TargetType: TNodeType): Boolean;
@@ -139,8 +140,6 @@ var
   RegexCheckOrderList: TRegEx;
   RegexCheckUnOrderList: TRegEx;
   RegexDecimalEntityReference: TRegEx;
-  RegexDeleteTableLeft: TRegEx;
-  RegexDeleteTableRight: TRegEx;
   RegexEmailAddress: TRegEx;
   RegexEmptyAtxHeading: TRegEx;
   RegexEmptyBlockQuote: TRegEx;
@@ -480,6 +479,16 @@ begin
   // ref. https://html.spec.whatwg.org/entities.json
   FHtmlEntities := TDictionary<String, String>.Create(2200);
   SetEntities(FHtmlEntities);
+end;
+
+function TMarkdownConverter.DeleteTablePipeOnBothEnds(
+  const Text: String): String;
+begin
+  Result := Trim(Text);
+  if GetAt(Result, 1) = '|' then
+    Delete(Result, 1, 1);
+  if RightStr(Result, 1) = '|' then
+    Delete(Result, Length(Result), 1);
 end;
 
 destructor TMarkdownConverter.Destroy;
@@ -1497,9 +1506,7 @@ var
   Item: String;
 begin
   SetLength(Cells, CellCount);
-  Buff := RegexDeleteTableLeft.Replace(Line, '');
-  Buff := RegexDeleteTableRight.Replace(Buff, '');
-  Buff := Buff + '|';
+  Buff := DeleteTablePipeOnBothEnds(Line) + '|';
 
   Ret := RegexTableCell.Matches(Buff);
   I := 0;
@@ -1527,8 +1534,7 @@ var
   Count: Integer;
   Escaped: Boolean;
 begin
-  Buff := RegexDeleteTableLeft.Replace(Line, '');
-  Buff := RegexDeleteTableRight.Replace(Buff, '');
+  Buff := DeleteTablePipeOnBothEnds(Line);
 
   Count := 0;
   Escaped := False;
@@ -1587,9 +1593,7 @@ var
   Ret: TMatchCollection;
 begin
   SetLength(Cells, Count);
-  Buff := RegexDeleteTableLeft.Replace(Line, '');
-  Buff := RegexDeleteTableRight.Replace(Buff, '');
-  Buff := Buff + '|';
+  Buff := DeleteTablePipeOnBothEnds(Line) + '|';
 
   Ret := RegexTableCell.Matches(Buff);
   for var I := 0 to Min(Count, Ret.Count) - 1 do
@@ -3952,8 +3956,6 @@ RegexBlockQuote := TRegEx.Create('^ {0,3}> ?(.*)$', [roCompiled]);
 RegexCheckOrderList := TRegEx.Create('^ *[-+*] ', [roCompiled]);
 RegexCheckUnOrderList := TRegEx.Create('^ *[0-9]{1,9}\. ', [roCompiled]);
 RegexDecimalEntityReference := TRegEx.Create('^&#([0-9]{1,7});$', [roCompiled]);
-RegexDeleteTableLeft := TRegEx.Create('^\s*\|', [roCompiled]);
-RegexDeleteTableRight := TRegEx.Create('\|\s*$', [roCompiled]);
 RegexFencedCodeBlock := TRegEx.Create('^ {0,3}(([`~])\2{2,})(?: *)([^ ]*)(.*)$',
   [roCompiled]);
 RegexFootnoteDefinition := TRegEx.Create('^ {0,3}\[\^[^\s]*\]', [roCompiled]);
@@ -3991,7 +3993,7 @@ RegexPreformattedText := TRegEx.Create('^ {4}(.*)', [roCompiled]);
 RegexSetextHeading1 := TRegEx.Create('^ {0,3}=+ *$', [roCompiled]);
 RegexSetextHeading2 := TRegEx.Create('^ {0,3}-+ *$', [roCompiled]);
 RegexTable := TRegEx.Create('^ {0,3}.+\|.+', [roCompiled]);
-RegexTableCell := TRegEx.Create('\s*(.+?)\s*(?<!\\)\|', [roCompiled]);
+RegexTableCell := TRegEx.Create('\s*(.*?)\s*(?<!\\)\|', [roCompiled]);
 RegexTableHeader := TRegEx.Create('^ {0,3}\|?(\s*:?-+:?\s*\|)+', [roCompiled]);
 RegexTaskListMark := TRegEx.Create('^( {0,3}\[([Xx ])\] )', [roCompiled]);
 RegexThematicBreak := TRegEx.Create

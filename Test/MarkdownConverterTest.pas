@@ -455,6 +455,8 @@ type
     [Test]
     procedure TestWikiToHtmlGmf198_3; // additional test
     [Test]
+    procedure TestWikiToHtmlGmf198_4; // additional test
+    [Test]
     procedure TestWikiToHtmlGmf199;
     [Test]
     procedure TestWikiToHtmlGmf200;
@@ -3075,8 +3077,21 @@ var
   Sentence: String;
 begin
   Sentence := String.Join(WikiLB, ['|foo|bar|', '|foo|bar|']);
-  Expected := String.Join(WikiLB, ['<p>|foo|bar|', '|foo|bar|</p>']
-    ) + WikiLB;
+  Expected := String.Join(WikiLB, ['<p>|foo|bar|', '|foo|bar|</p>']) + WikiLB;
+  Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
+end;
+
+procedure TMarkdownConverterTest.TestWikiToHtmlGmf198_4;
+var
+  Expected: String;
+  Sentence: String;
+begin
+  Sentence := String.Join(WikiLB, ['|foo|bar|', '|---|---|', '|foo||',
+    '||bar|']);
+  Expected := String.Join(WikiLB, ['<table>', '<thead>', '<tr>', '<th>foo</th>',
+    '<th>bar</th>', '</tr>', '</thead>', '<tbody>', '<tr>', '<td>foo</td>',
+    '<td></td>', '</tr>', '<tr>', '<td></td>', '<td>bar</td>', '</tr>',
+    '</tbody>', '</table>']) + WikiLB;
   Assert.AreEqual(Expected, FConverter.WikiToHtml(Sentence));
 end;
 
