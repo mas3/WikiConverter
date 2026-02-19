@@ -78,7 +78,7 @@ GFM support status:
   - [ ] extended email autolink
   - [ ] extended protocol autolink
 - [x] Raw HTML
-- [ ] Disallowed Raw HTML
+- [x] Disallowed Raw HTML
 - [x] Hard line breaks
 - [x] Soft line breaks
 - [x] Textual content

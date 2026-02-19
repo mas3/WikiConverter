@@ -110,6 +110,7 @@ type
       const ParentNode: TWikiNode; const Condition: String);
     function ProcessWikiLink(const CurrentNode: TWikiNode; const Text: String;
       const Offset: Integer; const Copied: Integer): Integer;
+    function ReplaceDisallowdHtml(const Text: String): String;
     function SearchCloser(const Text: String; const BeginPos: Integer;
       const Mark: Char): TCloser;
   protected
@@ -140,6 +141,7 @@ var
   RegexCheckOrderList: TRegEx;
   RegexCheckUnOrderList: TRegEx;
   RegexDecimalEntityReference: TRegEx;
+  RegexDisallowdRawHtml: TRegEx;
   RegexEmailAddress: TRegEx;
   RegexEmptyAtxHeading: TRegEx;
   RegexEmptyBlockQuote: TRegEx;
@@ -481,8 +483,8 @@ begin
   SetEntities(FHtmlEntities);
 end;
 
-function TMarkdownConverter.DeleteTablePipeOnBothEnds(
-  const Text: String): String;
+function TMarkdownConverter.DeleteTablePipeOnBothEnds
+  (const Text: String): String;
 begin
   Result := Trim(Text);
   if GetAt(Result, 1) = '|' then
@@ -2650,6 +2652,7 @@ begin
         if LocalIndex = LineCount then
           Node.Text := Node.Text + WikiLB;
 
+        Node.Text := ReplaceDisallowdHtml(Node.Text);
         OutputBuffer(ParentNode, Node);
         Node := nil;
         Index := LocalIndex;
@@ -3310,7 +3313,7 @@ begin
             AddBeforeTextNode(Node, Copy(Text, Copied + 1, Pos - Copied - 1));
 
             Node.AddChild(TWikiNode.Create(TNodeType.Raw,
-              Copy(Text, Pos, Pos3 - Pos + 1), True));
+              ReplaceDisallowdHtml(Copy(Text, Pos, Pos3 - Pos + 1)), True));
 
             Pos := Pos3 + 1;
             Copied := Pos - 1;
@@ -3634,7 +3637,7 @@ begin
 
   Index := LocalIndex - 1;
 
-  Node.Text := Node.Text + WikiLB;
+  Node.Text := ReplaceDisallowdHtml(Node.Text) + WikiLB;
   OutputBuffer(ParentNode, Node);
 end;
 
@@ -3716,6 +3719,11 @@ begin
   CurrentNode.AddChild(Node);
 
   Result := EPos + 1;
+end;
+
+function TMarkdownConverter.ReplaceDisallowdHtml(const Text: String): String;
+begin
+  Result := RegexDisallowdRawHtml.Replace(Text, '&lt;$1');
 end;
 
 function TMarkdownConverter.SearchCloser(const Text: String;
@@ -3956,6 +3964,10 @@ RegexBlockQuote := TRegEx.Create('^ {0,3}> ?(.*)$', [roCompiled]);
 RegexCheckOrderList := TRegEx.Create('^ *[-+*] ', [roCompiled]);
 RegexCheckUnOrderList := TRegEx.Create('^ *[0-9]{1,9}\. ', [roCompiled]);
 RegexDecimalEntityReference := TRegEx.Create('^&#([0-9]{1,7});$', [roCompiled]);
+RegexDisallowdRawHtml :=
+  TRegEx.Create
+  ('<(title|textarea|style|xmp|iframe|noembed|noframes|script|plaintext[>\s])',
+  [roCompiled, roIgnoreCase]);
 RegexFencedCodeBlock := TRegEx.Create('^ {0,3}(([`~])\2{2,})(?: *)([^ ]*)(.*)$',
   [roCompiled]);
 RegexFootnoteDefinition := TRegEx.Create('^ {0,3}\[\^[^\s]*\]', [roCompiled]);

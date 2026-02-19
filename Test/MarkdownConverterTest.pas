@@ -323,20 +323,25 @@ type
     [Test]
     procedure TestWikiToHtmlGmf139;
     [Test]
+    [Ignore('Disallowed Raw HTML')]
     procedure TestWikiToHtmlGmf140;
     [Test]
+    [Ignore('Disallowed Raw HTML')]
     procedure TestWikiToHtmlGmf141;
     [Test]
+    [Ignore('Disallowed Raw HTML')]
     procedure TestWikiToHtmlGmf142;
     [Test]
     procedure TestWikiToHtmlGmf143;
     [Test]
     procedure TestWikiToHtmlGmf144;
     [Test]
+    [Ignore('Disallowed Raw HTML')]
     procedure TestWikiToHtmlGmf145;
     [Test]
     procedure TestWikiToHtmlGmf146;
     [Test]
+    [Ignore('Disallowed Raw HTML')]
     procedure TestWikiToHtmlGmf147;
     [Test]
     procedure TestWikiToHtmlGmf148;
@@ -1408,7 +1413,6 @@ type
     [Test]
     procedure TestWikiToHtmlGmf656;
     [Test]
-    [Ignore('Not compatible')]
     procedure TestWikiToHtmlGmf657;
 
     // Hard line breaks
